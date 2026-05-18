@@ -1,5 +1,6 @@
-# MATLAB files
+# Data files
 *.mat
+*.mp4
 
 # Python cache
 __pycache__/
