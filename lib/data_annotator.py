@@ -2,126 +2,26 @@ import numpy as np
 import scipy.io as sio
 import os
 import matplotlib.pyplot as plt
+from getSamplingFreq import estimate_fs
 
 
 # ================= CONFIG =================
 DATASET_DIR = "dataset"
 ANNOTATED_DIR = "annotated"
 
-WINDOW_SECONDS = 3   # optional (not strictly needed for labeling)
+WINDOW_SECONDS = 2
+OVERLAP = 0.2
 
+def print_gait_color_table():
+    print("\n[GAIT PHASE COLOR MAP]")
+    print("--------------------------------")
+    print("0 : SWING        -> yellow")
+    print("1 : HEEL_STRIKE  -> red")
+    print("2 : STANCE       -> green")
+    print("3 : TOE_OFF      -> orange")
+    print("--------------------------------\n")
 
-# ================= LOADERS =================
-def load_imu(index):
-    data = sio.loadmat(f"{DATASET_DIR}/IMU_data/IMU_data_{index}.mat")
-    return data["t"].flatten(), data["pavg"].flatten()
-
-
-def load_fsr(index):
-    path = f"{DATASET_DIR}/FSR_data/FSR_data_{index}.mat"
-    if not os.path.exists(path):
-        return None, None, None
-    data = sio.loadmat(path)
-    return (
-        data["fsr1"].flatten(),
-        data["fsr2"].flatten(),
-        data["fsr3"].flatten()
-    )
-
-
-# ================= IMU LABELING =================
-def label_from_imu(pavg):
-    dp = np.gradient(pavg)
-    labels = np.zeros(len(pavg), dtype=int)
-
-    threshold = np.std(dp) * 0.2
-
-    for i in range(1, len(pavg) - 1):
-
-        # Heel strike (peak)
-        if dp[i - 1] > 0 and dp[i] <= 0 and abs(dp[i - 1]) > threshold:
-            labels[i] = 1
-
-        # Toe-off (valley)
-        elif dp[i - 1] < 0 and dp[i] >= 0 and abs(dp[i - 1]) > threshold:
-            labels[i] = 3
-
-        # Stance (low motion)
-        elif abs(dp[i]) < threshold * 0.5:
-            labels[i] = 2
-
-        else:
-            labels[i] = 0
-
-    return labels
-
-
-# ================= FSR LABELING =================
-def label_from_fsr(fsr1, fsr2, fsr3):
-    labels = np.zeros(len(fsr1), dtype=int)
-
-    for i in range(len(fsr1)):
-
-        total = fsr1[i] + fsr2[i] + fsr3[i]
-
-        # Swing
-        if total < 300:
-            labels[i] = 0
-
-        # Heel strike
-        elif fsr1[i] > fsr2[i] and fsr1[i] > fsr3[i] and fsr1[i] > 2000:
-            labels[i] = 1
-
-        # Toe-off
-        elif fsr2[i] > 2500 or fsr3[i] > 2500:
-            labels[i] = 3
-
-        # Stance
-        else:
-            labels[i] = 2
-
-    return labels
-
-
-# ================= RECONCILIATION =================
-def reconcile_labels(imu_labels, fsr_labels):
-    final = np.zeros(len(imu_labels), dtype=int)
-
-    for i in range(len(imu_labels)):
-        if imu_labels[i] == fsr_labels[i]:
-            final[i] = imu_labels[i]
-        else:
-            # prioritize FSR if strong signal
-            final[i] = fsr_labels[i]
-
-    return final
-
-
-# ================= VISUALIZATION =================
-def plot_annotated(t, pavg, labels, index):
-
-    colors = {
-        0: "yellow",   # swing
-        1: "red",      # heel strike
-        2: "green",    # stance
-        3: "orange"    # toe-off
-    }
-
-    plt.figure(figsize=(12, 4))
-
-    for i in range(len(t) - 1):
-        plt.plot(t[i:i+2], pavg[i:i+2], color=colors[labels[i]])
-
-    plt.title(f"Annotated IMU Data {index}")
-    plt.xlabel("Time")
-    plt.ylabel("pavg")
-
-    os.makedirs(ANNOTATED_DIR, exist_ok=True)
-    plt.savefig(f"{ANNOTATED_DIR}/annotated_{index}.png")
-    plt.close()
-
-
-# ================= SAVE =================
+# =================PLOTTING =================
 def save_labels(t, labels, index):
     os.makedirs(ANNOTATED_DIR, exist_ok=True)
 
@@ -133,6 +33,159 @@ def save_labels(t, labels, index):
         }
     )
 
+def plot_annotated(t, pavg, labels, index):
+
+    colors = {
+        0: "yellow",
+        1: "red",
+        2: "green",
+        3: "orange"
+    }
+
+    plt.figure(figsize=(12, 4))
+
+    for i in range(len(t) - 1):
+        plt.plot(t[i:i+2], pavg[i:i+2], color=colors[labels[i]])
+
+    os.makedirs(ANNOTATED_DIR, exist_ok=True)
+
+    plt.savefig(f"{ANNOTATED_DIR}/annotated_{index}.png")
+    plt.close()
+
+# ================= LOADERS =================
+def load_imu(index):
+    data = sio.loadmat(f"{DATASET_DIR}/IMU_data/IMU_data_{index}.mat")
+    return data["t"].flatten(), data["pavg"].flatten()
+
+
+def load_fsr(index):
+    path = f"{DATASET_DIR}/FSR_data/FSR_data_{index}.mat"
+    if not os.path.exists(path):
+        return None, None, None
+
+    data = sio.loadmat(path)
+    return data["fsr1"].flatten(), data["fsr2"].flatten(), data["fsr3"].flatten()
+
+
+# ================= FS INFO =================
+def get_fs_info(t):
+    FS, N, duration, dt_stats = estimate_fs(t)
+    return FS, N, duration, dt_stats
+
+
+# ================= IMU LABELING =================
+def label_from_imu(pavg, window_size):
+
+    dp = np.gradient(pavg)
+    votes = np.zeros((len(pavg), 4))
+
+    step_size = int(window_size * (1 - OVERLAP))
+    if step_size < 1:
+        step_size = 1
+
+    threshold = np.std(dp) * 0.2
+    low_motion = threshold * 0.5
+
+    for start in range(0, len(pavg) - window_size, step_size):
+
+        end = start + window_size
+        window_dp = dp[start:end]
+
+        if len(window_dp) == 0:
+            continue
+
+        mean_motion = np.mean(np.abs(window_dp))
+        max_dp = np.max(window_dp)
+        min_dp = np.min(window_dp)
+
+        if max_dp > threshold:
+            w_label = 1
+        elif min_dp < -threshold:
+            w_label = 3
+        elif mean_motion < low_motion:
+            w_label = 2
+        else:
+            w_label = 2
+
+        votes[start:end, w_label] += 1
+
+    return np.argmax(votes, axis=1)
+
+
+# ================= FSR LABELING =================
+def label_from_fsr(fsr1, fsr2, fsr3):
+
+    labels = np.zeros(len(fsr1), dtype=int)
+
+    for i in range(len(fsr1)):
+
+        total = fsr1[i] + fsr2[i] + fsr3[i]
+
+        if total < 300:
+            labels[i] = 0
+        elif fsr1[i] > fsr2[i] and fsr1[i] > fsr3[i] and fsr1[i] > 2000:
+            labels[i] = 1
+        elif fsr2[i] > 2500 or fsr3[i] > 2500:
+            labels[i] = 3
+        else:
+            labels[i] = 2
+
+    return labels
+
+
+# ================= RECONCILIATION =================
+def reconcile_labels(imu_labels, fsr_labels):
+    return np.where(imu_labels == fsr_labels, imu_labels, fsr_labels)
+
+
+# ================= TEMPOREAL STRUCTURE ENFORCEMENT =================
+VALID_TRANSITIONS = {
+    0: [1],     # SWING → HEEL_STRIKE
+    1: [2],     # HEEL_STRIKE → STANCE
+    2: [3],     # STANCE → TOE_OFF only
+    3: [0]      # TOE_OFF → SWING
+}
+
+
+def enforce_temporal_structure(labels):
+
+    cleaned = labels.copy()
+
+    for i in range(1, len(labels)):
+        prev = cleaned[i - 1]
+        curr = cleaned[i]
+
+        if curr not in VALID_TRANSITIONS.get(prev, []):
+            cleaned[i] = prev  # force valid continuity
+
+    return cleaned
+
+
+# ================= SCORE (FIXED VERSION) =================
+def compress(labels):
+    """remove consecutive duplicates"""
+    out = [labels[0]]
+    for l in labels[1:]:
+        if l != out[-1]:
+            out.append(l)
+    return np.array(out)
+
+
+def score_sequence(labels):
+
+    labels = compress(labels)  # CRITICAL FIX
+
+    invalid = 0
+
+    for i in range(1, len(labels)):
+        prev = labels[i - 1]
+        curr = labels[i]
+
+        if curr not in VALID_TRANSITIONS.get(prev, []):
+            invalid += 1
+
+    return invalid, len(labels)
+
 
 # ================= PROCESS ONE =================
 def process_one(index):
@@ -141,7 +194,13 @@ def process_one(index):
 
     t, pavg = load_imu(index)
 
-    imu_labels = label_from_imu(pavg)
+    FS, N, duration, dt_stats = get_fs_info(t)
+
+    window_size = int(WINDOW_SECONDS * FS)
+
+    print(f"FS = {FS:.2f} Hz | Samples = {N} | Window = {window_size}")
+
+    imu_labels = label_from_imu(pavg, window_size)
 
     fsr1, fsr2, fsr3 = load_fsr(index)
 
@@ -151,36 +210,29 @@ def process_one(index):
     else:
         labels = imu_labels
 
-    plot_annotated(t, pavg, labels, index)
-    save_labels(t, labels, index)
+    # enforce structure
+    labels = enforce_temporal_structure(labels)
+
+    # optional debug score
+    invalid, length = score_sequence(labels)
+    print(f"[SEQ SCORE] invalid transitions = {invalid} | events = {length}")
 
     print(f"[DONE] {index}")
 
-
-# ================= BATCH PROCESS =================
-def process_all():
-
-    files = os.listdir(f"{DATASET_DIR}/IMU_data")
-
-    indices = [
-        int(f.split("_")[-1].split(".")[0])
-        for f in files if f.startswith("IMU_data")
-    ]
-
-    indices.sort()
-
-    for idx in indices:
-        process_one(idx)
+    plot_annotated(t, pavg, labels, index)
+    save_labels(t, labels, index)
 
 
 # ================= MAIN =================
 if __name__ == "__main__":
 
-    MODE = "single"   # "single" or "batch"
-    TARGET_INDEX = 1
+    MODE = "single"
+    TARGET_INDEX = 10
+
+    print_gait_color_table()
 
     if MODE == "single":
         process_one(TARGET_INDEX)
-
     else:
-        process_all()
+        for i in range(1, 10):
+            process_one(i)
