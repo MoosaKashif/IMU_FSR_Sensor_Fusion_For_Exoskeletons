@@ -20,6 +20,9 @@ class Controls:
         self.parent = parent
         self.state = state
 
+        # for Synching Scrub Ui element with when its dragged ad callback is fired
+        self.is_scrubbing = False
+
         self.frame = tk.Frame(parent)
 
         # =====================
@@ -108,11 +111,15 @@ class Controls:
             to=100,
             orient=tk.HORIZONTAL,
             resolution=0.01,
-            length=1200,
-            command=self.on_timeline_change
+            length=1200
         )
 
         self.timeline.pack(side=tk.TOP, fill=tk.X)
+
+        # Explicit mouse event handling for Scrubbing mp4
+        self.timeline.bind("<ButtonPress-1>", self.on_scrub_start)
+        self.timeline.bind("<B1-Motion>", self.on_scrub_move)
+        self.timeline.bind("<ButtonRelease-1>", self.on_scrub_end)
 
         self.seek_callback = seek_callback
 
@@ -144,10 +151,29 @@ class Controls:
 
         self.seek_callback(float(value))
 
+    def on_scrub_start(self, event):
+        self.is_scrubbing = True
+        self.state.timeline_locked = True
+    
+    def on_scrub_move(self, event):
+
+        value = self.timeline.get()
+        self.seek_callback(float(value))
+    
+    def on_scrub_end(self, event):
+        self.is_scrubbing = False
+        self.state.timeline_locked = False
+    
     def set_timeline_range(self, duration):
 
         self.timeline.config(to=duration)
 
     def update_timeline(self, current_time):
+
+        # do not override user dragging
+        # drag → seek video immediately: video updates → slider NOT overwritten during drag
+        # release → playback resumes control
+        if self.is_scrubbing:
+            return
 
         self.timeline.set(current_time)

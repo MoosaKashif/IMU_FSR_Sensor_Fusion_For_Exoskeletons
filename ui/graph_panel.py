@@ -62,10 +62,8 @@ class GraphPanel:
 
             all_values.extend(signal)
 
-        self.cursor = self.ax.axvline(
-            self.state.current_time,
-            color='red'
-        )
+        graph_time = self.state.playback_time + self.state.graph_offset
+        self.cursor = self.ax.axvline(graph_time, color='red')
 
         self.ax.set_xlim(
             self.state.start_time,
@@ -87,9 +85,8 @@ class GraphPanel:
 
         if self.cursor is not None:
 
-            self.cursor.set_xdata([
-                self.state.current_time
-            ])
+            graph_time = self.state.playback_time + self.state.graph_offset
+            self.cursor.set_xdata([graph_time])
 
             self.canvas.draw_idle()
 
@@ -112,9 +109,12 @@ class GraphPanel:
         if event.xdata is None:
             return
         
-        self.state.current_time = max(
+        clicked_time = max(
             self.state.start_time,
             min(event.xdata, self.state.end_time)
         )
 
-        self.timeline_callback(self.state.current_time)
+        # set alignment offset
+        self.state.graph_offset = clicked_time - self.state.playback_time
+
+        self.timeline_callback(self.state.playback_time)

@@ -163,7 +163,7 @@ class GaitViewerApp:
 
     def seek_time(self, value):
 
-        self.state.current_time = float(value)
+        self.state.playback_time = float(value)
         self.state.force_seek = True
 
         self.video_panel.update_frame()
@@ -179,13 +179,13 @@ class GaitViewerApp:
         self.state.start_time = float(start)
         self.state.end_time = float(end)
 
-        # CRITICAL FIX: snap cursor into range
-        self.state.current_time = self.state.start_time
+        # align graph so that start corresponds to current playback
+        self.state.graph_offset = self.state.start_time - self.state.playback_time
 
         self.video_panel.update_frame()
         self.graph_panel.draw_signals()
         self.graph_panel.update_cursor()
-        self.controls.update_timeline(self.state.current_time)
+        self.controls.update_timeline(self.state.playback_time)
 
     # =========================================
     # MAIN UPDATE LOOP
@@ -196,7 +196,10 @@ class GaitViewerApp:
         if self.state.is_playing:
 
             dt = (1 / self.state.fps) * self.state.playback_speed
-            self.state.current_time += dt
+            self.state.playback_time  += dt
+
+            video_time = self.state.playback_time
+            graph_time = self.state.playback_time + self.state.graph_offset
 
             if self.state.current_time >= self.state.end_time:
                 self.state.current_time = self.state.end_time
@@ -204,7 +207,7 @@ class GaitViewerApp:
 
             self.video_panel.update_frame()
             self.graph_panel.update_cursor()
-            self.controls.update_timeline(self.state.current_time)
+            self.controls.update_timeline(self.state.playback_time)
 
         self.root.after(15, self.update_loop)
 

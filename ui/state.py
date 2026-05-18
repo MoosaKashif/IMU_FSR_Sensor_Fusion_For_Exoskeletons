@@ -15,6 +15,12 @@ class AppState:
 
         self.current_time = 0.0
 
+        self.playback_time = 0.0
+        self.graph_offset = 0.0
+        self.synced = True
+
+        self.timeline_locked = False
+
         self.start_time = 0.0
         self.end_time = 10.0
 

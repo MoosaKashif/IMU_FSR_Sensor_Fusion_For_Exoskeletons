@@ -38,7 +38,7 @@ class VideoPanel:
             return
 
         frame_number = int(
-            self.state.current_time * self.state.fps
+            self.state.playback_time * self.state.fps
         )
 
         # clamp frame index
