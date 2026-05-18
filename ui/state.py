@@ -5,6 +5,8 @@ class AppState:
         self.video_path = None
         self.mat_path = None
 
+        self.force_seek = True
+
         self.cap = None
 
         self.fps = 30
