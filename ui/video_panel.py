@@ -37,29 +37,54 @@ class VideoPanel:
         if self.state.cap is None:
             return
 
-        # clamp frame
-        frame_number = int(self.state.current_time * self.state.fps)
-        frame_number = max(0, min(frame_number, self.state.total_frames - 1))
+        frame_number = int(
+            self.state.current_time * self.state.fps
+        )
 
-        # only seek if necessary (IMPORTANT FIX)
-        current_pos = int(self.state.cap.get(cv2.CAP_PROP_POS_FRAMES))
+        # clamp frame index
+        frame_number = max(
+            0,
+            min(
+                frame_number,
+                self.state.total_frames - 1
+            )
+        )
 
-        if abs(current_pos - frame_number) > 1:
-            self.state.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+        # only seek when needed
+        if self.state.force_seek:
+
+            self.state.cap.set(
+                cv2.CAP_PROP_POS_FRAMES,
+                frame_number
+            )
+
+            self.state.force_seek = False
 
         ret, frame = self.state.cap.read()
 
         if not ret:
             return
 
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # BGR -> RGB
+        frame = cv2.cvtColor(
+            frame,
+            cv2.COLOR_BGR2RGB
+        )
 
+        # convert to PIL image
         img = Image.fromarray(frame)
 
-        # FIXED scaling prevents "zoom illusion"
-        img = img.resize((600, 450), Image.Resampling.LANCZOS)
+        # fixed rendering size
+        img = img.resize(
+            (640, 480),
+            Image.Resampling.LANCZOS
+        )
 
+        # PIL -> Tkinter image
         imgtk = ImageTk.PhotoImage(image=img)
 
+        # prevent garbage collection
         self.label.imgtk = imgtk
+
+        # display image
         self.label.configure(image=imgtk)
