@@ -164,6 +164,7 @@ class GaitViewerApp:
     def seek_time(self, value):
 
         self.state.current_time = float(value)
+        self.state.force_seek = True
 
         self.video_panel.update_frame()
         self.graph_panel.update_cursor()
