@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 lstm/train.py
 
@@ -153,13 +154,13 @@ def main():
     print(f"{'='*60}\n")
 
     # ── Load data ───────────────────────────────────────────────────────
-    print("[STEP 1/4] Loading dataset …")
+    print("[STEP 1/4] Loading dataset ...")
     X, y = load_dataset(verbose=True)
     print(f"\n  Dataset shape : X={X.shape}  y={y.shape}")
     print(f"  Class counts  : { {i: int((y==i).sum()) for i in range(N_CLASSES)} }")
 
     # ── Train / val split ───────────────────────────────────────────────
-    print("\n[STEP 2/4] Splitting train/val …")
+    print("\n[STEP 2/4] Splitting train/val ...")
     n_total = len(X)
     n_val   = max(1, int(n_total * args.val_split))
     n_train = n_total - n_val
@@ -174,7 +175,7 @@ def main():
     print(f"  train={len(X_train)}  val={len(X_val)}")
 
     # ── Normalise ────────────────────────────────────────────────────────
-    print("\n[STEP 3/4] Fitting StandardScaler on train …")
+    print("\n[STEP 3/4] Fitting StandardScaler on train ...")
     scaler  = fit_scaler(X_train)
     X_train = apply_scaler(X_train, scaler)
     X_val   = apply_scaler(X_val,   scaler)
@@ -184,7 +185,7 @@ def main():
     scaler_path = os.path.join(args.out, "scaler.pkl")
     with open(scaler_path, "wb") as f:
         pickle.dump(scaler, f)
-    print(f"  Scaler saved → {scaler_path}")
+    print(f"  Scaler saved -> {scaler_path}")
 
     # ── DataLoaders ──────────────────────────────────────────────────────
     train_ds = TensorDataset(
@@ -201,7 +202,7 @@ def main():
                               shuffle=False, drop_last=False)
 
     # ── Model, loss, optimiser ───────────────────────────────────────────
-    print("\n[STEP 4/4] Building model …")
+    print("\n[STEP 4/4] Building model ...")
     model = build_model(device)
 
     # Weighted cross-entropy to handle potential class imbalance
@@ -221,10 +222,10 @@ def main():
     )
 
     # ── Training loop ────────────────────────────────────────────────────
-    print(f"\n{'─'*60}")
+    print("\n" + "-"*60)
     print(f"  {'Epoch':>6}  {'TrainLoss':>10}  {'TrainAcc':>9}  "
           f"{'ValLoss':>9}  {'ValAcc':>8}  {'LR':>9}  {'Time':>6}")
-    print(f"{'─'*60}")
+    print("-"*60)
 
     best_val_loss    = float("inf")
     patience_counter = 0
@@ -259,7 +260,7 @@ def main():
                 "val_acc":     val_acc,
                 "args":        vars(args),
             }, best_ckpt_path)
-            print(f"           ↳ ✓ checkpoint saved (val_loss={val_loss:.4f})")
+            print(f"           >> checkpoint saved (val_loss={val_loss:.4f})")
         else:
             patience_counter += 1
             if patience_counter >= args.patience:
@@ -275,7 +276,7 @@ def main():
     print(f"{'='*60}\n")
 
     # ── Final evaluation on val set ───────────────────────────────────────
-    print("Loading best checkpoint for final evaluation …")
+    print("Loading best checkpoint for final evaluation ...")
     ckpt = torch.load(best_ckpt_path, map_location=device)
     model.load_state_dict(ckpt["model_state"])
 
@@ -298,9 +299,9 @@ def main():
     all_labels = np.array(all_labels)
 
     phase_names = ["Heel Strike", "Stance", "Push-Off", "Swing"]
-    print(f"{'─'*50}")
+    print("-"*50)
     print(f"  {'Phase':<14}  {'Precision':>9}  {'Recall':>7}  {'F1':>6}")
-    print(f"{'─'*50}")
+    print("-"*50)
     for cls in range(N_CLASSES):
         tp = ((all_preds == cls) & (all_labels == cls)).sum()
         fp = ((all_preds == cls) & (all_labels != cls)).sum()
@@ -309,7 +310,7 @@ def main():
         rec  = tp / max(tp + fn, 1)
         f1   = 2 * prec * rec / max(prec + rec, 1e-9)
         print(f"  {phase_names[cls]:<14}  {prec:>9.2%}  {rec:>7.2%}  {f1:>6.2%}")
-    print(f"{'─'*50}\n")
+    print("-"*50 + "\n")
 
 
 if __name__ == "__main__":
